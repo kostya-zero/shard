@@ -21,7 +21,13 @@ use crate::{
     frontmatter::parse_matter,
 };
 
-static EXCLUDED_DIRS: [&str; 2] = [".obsidian", ".git"];
+/// Hidden entries (`.obsidian`, `.git`, `.trash`, dotfiles) and `node_modules` are off-limits.
+/// Trailing dots and spaces are stripped because Windows ignores them
+/// (`.git.` opens `.git`).
+fn is_restricted(name: &str) -> bool {
+    let name = name.trim_end_matches(['.', ' ']);
+    name.is_empty() || name.starts_with('.') || name.eq_ignore_ascii_case("node_modules")
+}
 
 fn resolve_path(vault_path: &Path, note_path: &str) -> Result<PathBuf, McpError> {
     let path = vault_path.join(note_path);
@@ -33,6 +39,18 @@ fn resolve_path(vault_path: &Path, note_path: &str) -> Result<PathBuf, McpError>
         return Err(McpError::invalid_params(
             format!(
                 "Invalid path '{note_path}': it must be relative to the vault root and must not be absolute or contain '..' or '.'."
+            ),
+            None,
+        ));
+    }
+
+    if note_pathbuf
+        .components()
+        .any(|c| is_restricted(&c.as_os_str().to_string_lossy()))
+    {
+        return Err(McpError::invalid_params(
+            format!(
+                "Invalid path '{note_path}': hidden entries (starting with '.') and node_modules are not accessible."
             ),
             None,
         ));
@@ -258,10 +276,10 @@ impl Server {
         while let Some(entry) = entries.next_entry().await.map_err(|e| io_error(e, &path))? {
             let metadata = entry.metadata().await.map_err(|e| io_error(e, &path))?;
             let filename = entry.file_name().to_string_lossy().to_string();
+            if is_restricted(&filename) {
+                continue;
+            }
             if metadata.is_dir() {
-                if EXCLUDED_DIRS.contains(&filename.as_str()) {
-                    continue;
-                }
                 result.dirs.push(filename);
             } else {
                 result.files.push(filename);
