@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 #[derive(Default, Debug, Deserialize, schemars::JsonSchema)]
 pub enum WriteMode {
@@ -99,4 +99,21 @@ pub struct GetFrontmatterParams {
 pub struct GetFrontmatterResult {
     /// The frontmatter of the file.
     pub frontmatter: Option<Value>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct UpdateFrontmatterParams {
+    /// The path to note.
+    pub path: String,
+    /// Properties to apply. Must be an object or null.
+    /// With merge, nested objects are merged recursively and a null value removes the key.
+    /// Without merge, replaces the whole frontmatter (null removes it).
+    pub frontmatter: Option<Map<String, Value>>,
+    /// Merge into the existing frontmatter (default) or replace it.
+    #[serde(default = "default_merge")]
+    pub merge: bool,
+}
+
+fn default_merge() -> bool {
+    true
 }

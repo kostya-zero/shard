@@ -9,13 +9,13 @@ use rmcp::{
     handler::server::{tool::ToolRouter, wrapper::Parameters},
     tool, tool_handler, tool_router,
 };
-use serde_json::Value;
+use serde_json::{Map, Value};
 use tokio::fs;
 
 use crate::dto::{
     DeleteNoteParams, GetFrontmatterParams, GetFrontmatterResult, ListDirectoryParams,
-    ListDirectoryResult, MoveFileParams, PatchNoteParams, ReadNoteParams, WriteMode,
-    WriteNoteParams,
+    ListDirectoryResult, MoveFileParams, PatchNoteParams, ReadNoteParams, UpdateFrontmatterParams,
+    WriteMode, WriteNoteParams,
 };
 
 static EXCLUDED_DIRS: [&str; 2] = [".obsidian", ".git"];
@@ -51,7 +51,7 @@ fn io_error(e: std::io::Error, path: &str) -> McpError {
 
 fn render_note(frontmatter: Option<Value>, body: &str) -> Result<String, McpError> {
     match frontmatter {
-        Some(f) if f != Value::Null => {
+        Some(f) if f != Value::Null && f != Value::Object(Map::new()) => {
             let yaml = serde_yaml_ng::to_string(&f).map_err(internal_error)?;
             Ok(format!("---\n{yaml}---\n{body}"))
         }
@@ -59,10 +59,29 @@ fn render_note(frontmatter: Option<Value>, body: &str) -> Result<String, McpErro
     }
 }
 
+fn merge_objects(old: &mut Map<String, Value>, new: Map<String, Value>) {
+    for (key, value) in new {
+        match value {
+            Value::Null => {
+                old.remove(&key);
+            }
+            Value::Object(new_obj) => match old.get_mut(&key) {
+                Some(Value::Object(old_obj)) => merge_objects(old_obj, new_obj),
+                _ => {
+                    old.insert(key, Value::Object(new_obj));
+                }
+            },
+            value => {
+                old.insert(key, value);
+            }
+        }
+    }
+}
+
 fn merge_front(old: Option<Value>, new: Option<Value>) -> Option<Value> {
     match (old, new) {
         (Some(Value::Object(mut a)), Some(Value::Object(b))) => {
-            a.extend(b);
+            merge_objects(&mut a, b);
             Some(Value::Object(a))
         }
         (_, Some(n)) => Some(n),
@@ -306,6 +325,58 @@ impl Server {
         Ok(Json(GetFrontmatterResult {
             frontmatter: p.data,
         }))
+    }
+
+    #[tool(description = "Update the frontmatter of a note without touching its content.")]
+    async fn update_frontmatter(
+        &self,
+        Parameters(UpdateFrontmatterParams {
+            path,
+            frontmatter,
+            merge,
+        }): Parameters<UpdateFrontmatterParams>,
+    ) -> Result<String, McpError> {
+        let note_path = resolve_path(&self.vault_path, &path)?;
+        if note_path.is_dir() {
+            return Err(McpError::invalid_params(
+                format!("'{path}' is a directory."),
+                None,
+            ));
+        }
+
+        let content = fs::read_to_string(&note_path)
+            .await
+            .map_err(|e| io_error(e, &path))?;
+        let p = Matter::<YAML>::new()
+            .parse::<Value>(&content)
+            .map_err(|e| {
+                McpError::invalid_params(format!("Invalid frontmatter in '{path}': {e}"), None)
+            })?;
+
+        let frontmatter = frontmatter.map(Value::Object);
+        let new_frontmatter = if merge {
+            merge_front(p.data, frontmatter)
+        } else {
+            frontmatter
+        };
+
+        // gray_matter trims the body, so restore the trailing newline of the original.
+        let mut body = p.content;
+        if content.ends_with('\n') && !body.ends_with('\n') {
+            body.push('\n');
+        }
+        let note = render_note(new_frontmatter, &body)?;
+        fs::write(&note_path, note)
+            .await
+            .map_err(|e| io_error(e, &path))?;
+        if merge {
+            Ok(format!("Successfully merged frontmatter in '{}'.", path))
+        } else {
+            Ok(format!(
+                "Successfully overwritten frontmatter in '{}'.",
+                path
+            ))
+        }
     }
 }
 

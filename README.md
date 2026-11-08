@@ -25,7 +25,7 @@ TBW
 ### Metadata
 
 - [x] `get_frontmatter`
-- [ ] `update_frontmatter`
+- [x] `update_frontmatter`
 - [ ] `get_notes_info`
 
 ## License
