@@ -5,18 +5,25 @@ use std::{
 
 use gray_matter::{Matter, engine::YAML};
 use rmcp::{
-    ErrorData as McpError, ServerHandler,
+    ErrorData as McpError, Json, ServerHandler,
     handler::server::{tool::ToolRouter, wrapper::Parameters},
     tool, tool_handler, tool_router,
 };
 use serde_json::Value;
 use tokio::fs;
 
-use crate::dto::{DeleteNoteParams, PatchNoteParams, ReadNoteParams, WriteMode, WriteNoteParams};
+use crate::dto::{
+    DeleteNoteParams, ListDirectoryParams, ListDirectoryResult, PatchNoteParams, ReadNoteParams,
+    WriteMode, WriteNoteParams,
+};
 
 fn resolve_path(vault_path: &Path, note_path: &str) -> Result<PathBuf, McpError> {
     let path = vault_path.join(note_path);
-    if !path.components().all(|c| matches!(c, Component::Normal(_))) {
+    let note_pathbuf = Path::new(note_path);
+    if !note_pathbuf
+        .components()
+        .all(|c| matches!(c, Component::Normal(_)))
+    {
         return Err(McpError::invalid_params("bad path provided", None));
     }
 
@@ -28,7 +35,7 @@ fn internal_error(e: impl ToString) -> McpError {
 }
 
 fn not_found(path: &str) -> McpError {
-    McpError::resource_not_found(format!("Note not found: {path}"), None)
+    McpError::resource_not_found(format!("Path not found: {path}"), None)
 }
 
 fn io_error(e: std::io::Error, path: &str) -> McpError {
@@ -175,6 +182,39 @@ impl Server {
             .map_err(internal_error)?;
 
         Ok(format!("Successfully replaced {count} occurrence(s)."))
+    }
+
+    #[tool(description = "Lists entries in the directory.")]
+    async fn list_directory(
+        &self,
+        Parameters(ListDirectoryParams { path }): Parameters<ListDirectoryParams>,
+    ) -> Result<Json<ListDirectoryResult>, McpError> {
+        let dir_path = resolve_path(&self.vault_path, &path)?;
+        if dir_path.is_file() {
+            return Err(McpError::invalid_params(
+                "Path should point at a directory.",
+                None,
+            ));
+        }
+
+        let mut entries = fs::read_dir(&dir_path)
+            .await
+            .map_err(|e| io_error(e, &path))?;
+        let mut result = ListDirectoryResult::default();
+        while let Some(entry) = entries.next_entry().await.map_err(internal_error)? {
+            let metadata = entry.metadata().await.map_err(internal_error)?;
+            if metadata.is_file() {
+                result
+                    .files
+                    .push(entry.file_name().to_string_lossy().to_string());
+            } else {
+                result
+                    .dirs
+                    .push(entry.file_name().to_string_lossy().to_string());
+            }
+        }
+
+        Ok(Json(result))
     }
 
     #[tool(description = "Delete a note from the vault.")]

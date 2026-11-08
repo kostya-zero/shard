@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 #[derive(Default, Debug, Deserialize, schemars::JsonSchema)]
@@ -46,6 +46,18 @@ pub struct WriteNoteParams {
 
     /// Which write mode to use.
     pub mode: WriteMode,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ListDirectoryParams {
+    /// The path to directory.
+    pub path: String,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct ListDirectoryResult {
+    pub files: Vec<String>,
+    pub dirs: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
