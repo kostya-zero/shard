@@ -5,9 +5,13 @@ use serde_json::{Map, Value};
 
 #[derive(Default, Debug, Deserialize, schemars::JsonSchema)]
 pub enum WriteMode {
+    /// Replace the whole note (frontmatter included). Creates the note and missing
+    /// parent directories if needed.
     #[default]
     Overwrite,
+    /// Add content to the end of the note body. The note must already exist.
     Append,
+    /// Add content to the start of the note body. The note must already exist.
     Prepend,
 }
 
@@ -23,93 +27,107 @@ impl Display for WriteMode {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReadNoteParams {
-    /// The path to note.
+    /// Note path relative to the vault root, e.g. `projects/ideas.md`.
+    /// Absolute paths and `..` are rejected.
     pub path: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct DeleteNoteParams {
-    /// The path to note.
+    /// Path of the note to delete, relative to the vault root.
     pub path: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct WriteNoteParams {
-    /// The path to note.
+    /// Note path relative to the vault root, e.g. `daily/2025-01-01.md`.
     pub path: String,
 
-    /// Content to insert
+    /// Markdown body of the note, without the `---` frontmatter block
+    /// (use `frontmatter` for properties).
     pub content: String,
 
-    /// Optional note properties to add.
+    /// Properties as a JSON object, written as YAML frontmatter.
+    /// With `overwrite` they become the note's entire frontmatter.
+    /// With `append`/`prepend` they are merged into the existing frontmatter:
+    /// nested objects merge recursively and a null value removes the key.
+    /// Omit to leave existing frontmatter untouched (`append`/`prepend`)
+    /// or to write no frontmatter (`overwrite`).
     pub frontmatter: Option<Value>,
 
-    /// Which write mode to use.
+    /// How to write: `overwrite` replaces the whole note, `append` / `prepend`
+    /// add `content` to the end / start of the existing body.
     pub mode: WriteMode,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ListDirectoryParams {
-    /// The path to directory.
+    /// Directory path relative to the vault root. Use an empty string for the root.
     pub path: String,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ListDirectoryResult {
+    /// File names directly inside the directory (names only, not full paths).
     pub files: Vec<String>,
+    /// Subdirectory names directly inside the directory (names only, not full paths).
     pub dirs: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct MoveFileParams {
-    /// The path to file.
+    /// Current path of the file, relative to the vault root.
     pub path: String,
 
-    /// The new location for file.
+    /// Destination path of the file (including its file name), relative to the
+    /// vault root. Missing parent directories are created. Also used to rename.
     pub new_path: String,
 
-    /// Overwrite if file by new path exists.
+    /// Replace the file at `new_path` if it already exists. Default: false (error).
     #[serde(default)]
     pub overwrite: bool,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct PatchNoteParams {
-    /// The path to note.
+    /// Note path relative to the vault root.
     pub path: String,
 
-    /// The old content to replace.
+    /// Exact text to find in the note body (case-sensitive, whitespace matters).
+    /// Frontmatter is not searched. Must match exactly one place unless `replace_all` is true.
     pub old_content: String,
 
-    /// The new content.
+    /// Text to put in place of `old_content`. Use an empty string to delete it.
     pub new_content: String,
 
-    /// If there is more than one occurrence of old content,
-    /// replace_all should be set to true.
+    /// Set to true to replace every occurrence of `old_content`.
+    /// If false and the text occurs more than once, the call fails.
     pub replace_all: bool,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct GetFrontmatterParams {
-    /// The path to note.
+    /// Note path relative to the vault root.
     pub path: String,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GetFrontmatterResult {
-    /// The frontmatter of the file.
+    /// Note properties as a JSON object, or null if the note has no frontmatter.
     pub frontmatter: Option<Value>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct UpdateFrontmatterParams {
-    /// The path to note.
+    /// Note path relative to the vault root.
     pub path: String,
-    /// Properties to apply. Must be an object or null.
-    /// With merge, nested objects are merged recursively and a null value removes the key.
-    /// Without merge, replaces the whole frontmatter (null removes it).
+    /// Properties as a JSON object, or null.
+    /// With `merge`: listed keys are set, unlisted keys are kept, nested objects
+    /// merge recursively, and a null value deletes that key.
+    /// Without `merge`: replaces the whole frontmatter; null removes it entirely.
     pub frontmatter: Option<Map<String, Value>>,
-    /// Merge into the existing frontmatter (default) or replace it.
+    /// true (default): merge into the existing frontmatter.
+    /// false: replace the existing frontmatter completely.
     #[serde(default = "default_merge")]
     pub merge: bool,
 }
