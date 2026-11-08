@@ -6,13 +6,25 @@ use rmcp::{
     handler::server::{tool::ToolRouter, wrapper::Parameters},
     tool, tool_handler, tool_router,
 };
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::fs;
 
 use crate::dto::{DeleteNoteParams, PatchNoteParams, ReadNoteParams, WriteMode, WriteNoteParams};
 
 fn internal_error(e: impl ToString) -> McpError {
-    McpError::internal_error("internal_error", Some(json!({"error": e.to_string()})))
+    McpError::internal_error(e.to_string(), None)
+}
+
+fn not_found(path: &str) -> McpError {
+    McpError::resource_not_found(format!("Note not found: {path}"), None)
+}
+
+fn io_error(e: std::io::Error, path: &str) -> McpError {
+    if e.kind() == ErrorKind::NotFound {
+        not_found(path)
+    } else {
+        internal_error(e)
+    }
 }
 
 fn render_note(frontmatter: Option<Value>, body: &str) -> Result<String, McpError> {
@@ -59,17 +71,9 @@ impl Server {
         &self,
         Parameters(ReadNoteParams { path }): Parameters<ReadNoteParams>,
     ) -> Result<String, McpError> {
-        let note_path = self.vault_path.join(&path);
-        if !note_path.exists() {
-            return Err(McpError::resource_not_found(
-                "resource_not_found",
-                Some(json!({"path": path})),
-            ));
-        }
-
-        fs::read_to_string(note_path).await.map_err(|e| {
-            McpError::internal_error("internal_error", Some(json!({ "error": &e.to_string()})))
-        })
+        fs::read_to_string(self.vault_path.join(&path))
+            .await
+            .map_err(|e| io_error(e, &path))
     }
 
     #[tool(description = "Write a note to the vault.")]
@@ -86,16 +90,9 @@ impl Server {
         let final_content = match mode {
             WriteMode::Overwrite => render_note(frontmatter, &content)?,
             WriteMode::Append | WriteMode::Prepend => {
-                let old_content = fs::read_to_string(&note_path).await.map_err(|e| {
-                    if e.kind() == ErrorKind::NotFound {
-                        McpError::resource_not_found(
-                            "resource_not_found",
-                            Some(json!({"path": path})),
-                        )
-                    } else {
-                        internal_error(e)
-                    }
-                })?;
+                let old_content = fs::read_to_string(&note_path)
+                    .await
+                    .map_err(|e| io_error(e, &path))?;
                 let old = Matter::<YAML>::new()
                     .parse::<Value>(&old_content)
                     .map_err(internal_error)?;
@@ -133,13 +130,9 @@ impl Server {
         }): Parameters<PatchNoteParams>,
     ) -> Result<String, McpError> {
         let note_path = self.vault_path.join(&path);
-        let note_content = fs::read_to_string(&note_path).await.map_err(|e| {
-            if e.kind() == ErrorKind::NotFound {
-                McpError::resource_not_found("resource_not_found", Some(json!({"path": path})))
-            } else {
-                internal_error(e)
-            }
-        })?;
+        let note_content = fs::read_to_string(&note_path)
+            .await
+            .map_err(|e| io_error(e, &path))?;
         let p = Matter::<YAML>::new()
             .parse::<Value>(&note_content)
             .map_err(internal_error)?;
@@ -178,13 +171,7 @@ impl Server {
     ) -> Result<String, McpError> {
         fs::remove_file(self.vault_path.join(&path))
             .await
-            .map_err(|e| {
-                if e.kind() == ErrorKind::NotFound {
-                    McpError::resource_not_found("resource_not_found", Some(json!({"path": path})))
-                } else {
-                    internal_error(e)
-                }
-            })?;
+            .map_err(|e| io_error(e, &path))?;
 
         Ok(format!("Successfully deleted note: {path}"))
     }
