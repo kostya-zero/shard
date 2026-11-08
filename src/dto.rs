@@ -61,6 +61,19 @@ pub struct ListDirectoryResult {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct MoveFileParams {
+    /// The path to file.
+    pub path: String,
+
+    /// The new location for file.
+    pub new_path: String,
+
+    /// Overwrite if file by new path exists.
+    #[serde(default)]
+    pub overwrite: bool,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct PatchNoteParams {
     /// The path to note.
     pub path: String,

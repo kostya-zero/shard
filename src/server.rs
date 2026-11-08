@@ -13,8 +13,8 @@ use serde_json::Value;
 use tokio::fs;
 
 use crate::dto::{
-    DeleteNoteParams, ListDirectoryParams, ListDirectoryResult, PatchNoteParams, ReadNoteParams,
-    WriteMode, WriteNoteParams,
+    DeleteNoteParams, ListDirectoryParams, ListDirectoryResult, MoveFileParams, PatchNoteParams,
+    ReadNoteParams, WriteMode, WriteNoteParams,
 };
 
 static EXCLUDED_DIRS: [&str; 2] = [".obsidian", ".git"];
@@ -214,6 +214,60 @@ impl Server {
         }
 
         Ok(Json(result))
+    }
+
+    #[tool(description = "Move file to a new location.")]
+    async fn move_file(
+        &self,
+        Parameters(MoveFileParams {
+            path,
+            new_path: new_file_path,
+            overwrite,
+        }): Parameters<MoveFileParams>,
+    ) -> Result<String, McpError> {
+        let old_path = resolve_path(&self.vault_path, &path)?;
+        let new_path = resolve_path(&self.vault_path, &new_file_path)?;
+
+        fs::metadata(&old_path)
+            .await
+            .map_err(|e| io_error(e, &path))?;
+
+        if old_path == new_path {
+            return Err(McpError::invalid_params(
+                "Source and destination are the same.",
+                None,
+            ));
+        }
+
+        if new_path.is_dir() {
+            return Err(McpError::invalid_params(
+                format!("Destination '{new_file_path}' is a directory."),
+                None,
+            ));
+        }
+
+        if new_path.exists() && !overwrite {
+            return Err(McpError::invalid_params(
+                format!(
+                    "File '{}' exists in the vault. Use overwrite=true to overwrite it.",
+                    new_file_path
+                ),
+                None,
+            ));
+        }
+
+        if let Some(parent) = new_path.parent() {
+            fs::create_dir_all(parent).await.map_err(internal_error)?;
+        }
+
+        fs::rename(old_path, new_path)
+            .await
+            .map_err(internal_error)?;
+
+        Ok(format!(
+            "Successfully moved file '{}' to '{}'",
+            path, new_file_path
+        ))
     }
 
     #[tool(description = "Delete a note from the vault.")]

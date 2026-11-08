@@ -20,7 +20,7 @@ TBW
 - [x] `patch_note`
 - [x] `delete_note`
 - [x] `list_directory`
-- [ ] `move_file`
+- [x] `move_file`
 
 ### Metadata
 
