@@ -9,7 +9,7 @@ use rmcp::{
 use serde_json::{Value, json};
 use tokio::fs;
 
-use crate::dto::{PatchNoteParams, ReadNoteParams, WriteMode, WriteNoteParams};
+use crate::dto::{DeleteNoteParams, PatchNoteParams, ReadNoteParams, WriteMode, WriteNoteParams};
 
 fn internal_error(e: impl ToString) -> McpError {
     McpError::internal_error("internal_error", Some(json!({"error": e.to_string()})))
@@ -169,6 +169,24 @@ impl Server {
             .map_err(internal_error)?;
 
         Ok(format!("Successfully replaced {count} occurrence(s)."))
+    }
+
+    #[tool(description = "Delete a note from the vault.")]
+    async fn delete_note(
+        &self,
+        Parameters(DeleteNoteParams { path }): Parameters<DeleteNoteParams>,
+    ) -> Result<String, McpError> {
+        fs::remove_file(self.vault_path.join(&path))
+            .await
+            .map_err(|e| {
+                if e.kind() == ErrorKind::NotFound {
+                    McpError::resource_not_found("resource_not_found", Some(json!({"path": path})))
+                } else {
+                    internal_error(e)
+                }
+            })?;
+
+        Ok(format!("Successfully deleted note: {path}"))
     }
 }
 

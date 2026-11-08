@@ -28,6 +28,12 @@ pub struct ReadNoteParams {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct DeleteNoteParams {
+    /// The path to note.
+    pub path: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct WriteNoteParams {
     /// The path to note.
     pub path: String,
