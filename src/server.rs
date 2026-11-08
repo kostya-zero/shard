@@ -258,7 +258,10 @@ impl Server {
         while let Some(entry) = entries.next_entry().await.map_err(|e| io_error(e, &path))? {
             let metadata = entry.metadata().await.map_err(|e| io_error(e, &path))?;
             let filename = entry.file_name().to_string_lossy().to_string();
-            if metadata.is_dir() && !EXCLUDED_DIRS.contains(&filename.as_str()) {
+            if metadata.is_dir() {
+                if EXCLUDED_DIRS.contains(&filename.as_str()) {
+                    continue;
+                }
                 result.dirs.push(filename);
             } else {
                 result.files.push(filename);
