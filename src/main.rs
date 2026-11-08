@@ -8,6 +8,7 @@ use crate::{cli::Cli, server::Server};
 
 mod cli;
 mod dto;
+mod frontmatter;
 mod server;
 
 #[tokio::main]

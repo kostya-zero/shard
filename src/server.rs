@@ -12,10 +12,13 @@ use rmcp::{
 use serde_json::{Map, Value};
 use tokio::fs;
 
-use crate::dto::{
-    DeleteNoteParams, GetFrontmatterParams, GetFrontmatterResult, ListDirectoryParams,
-    ListDirectoryResult, MoveFileParams, PatchNoteParams, ReadNoteParams, UpdateFrontmatterParams,
-    WriteMode, WriteNoteParams,
+use crate::{
+    dto::{
+        DeleteNoteParams, GetFrontmatterParams, GetFrontmatterResult, ListDirectoryParams,
+        ListDirectoryResult, MoveFileParams, PatchNoteParams, ReadNoteParams,
+        UpdateFrontmatterParams, WriteMode, WriteNoteParams,
+    },
+    frontmatter::parse_matter,
 };
 
 static EXCLUDED_DIRS: [&str; 2] = [".obsidian", ".git"];
@@ -39,6 +42,10 @@ fn internal_error(e: impl ToString) -> McpError {
 
 fn not_found(path: &str) -> McpError {
     McpError::resource_not_found(format!("Path not found: {path}"), None)
+}
+
+fn yaml_error(e: impl std::fmt::Display, path: &str) -> McpError {
+    McpError::invalid_params(format!("Invalid frontmatter in '{path}': {e}"), None)
 }
 
 fn io_error(e: std::io::Error, path: &str) -> McpError {
@@ -137,12 +144,13 @@ impl Server {
                     .map_err(|e| io_error(e, &path))?;
                 let old = Matter::<YAML>::new()
                     .parse::<Value>(&old_content)
-                    .map_err(internal_error)?;
+                    .map_err(|e| yaml_error(e, &path))?;
                 let body = match mode {
                     WriteMode::Append => format!("{}\n{}", old.content.trim_end(), content),
                     _ => format!("{}\n{}", content.trim_end(), old.content),
                 };
-                render_note(merge_front(old.data, frontmatter), &body)?
+                let matter = parse_matter(old.matter).map_err(|e| yaml_error(e, &path))?;
+                render_note(merge_front(matter, frontmatter), &body)?
             }
         };
 
@@ -177,7 +185,8 @@ impl Server {
             .map_err(|e| io_error(e, &path))?;
         let p = Matter::<YAML>::new()
             .parse::<Value>(&note_content)
-            .map_err(internal_error)?;
+            .map_err(|e| yaml_error(e, &path))?;
+        let matter = parse_matter(p.matter).map_err(|e| yaml_error(e, &path))?;
         let content = p.content;
         let count = content.matches(&old_content).count();
 
@@ -198,7 +207,7 @@ impl Server {
             ));
         }
 
-        let final_content = render_note(p.data, &content.replace(&old_content, &new_content))?;
+        let final_content = render_note(matter, &content.replace(&old_content, &new_content))?;
         fs::write(note_path, final_content)
             .await
             .map_err(internal_error)?;
@@ -319,11 +328,14 @@ impl Server {
         let content = fs::read_to_string(&note_path)
             .await
             .map_err(|e| io_error(e, &path))?;
-        let p = Matter::<YAML>::new().parse(&content).map_err(|e| {
-            McpError::invalid_params(format!("Invalid frontmatter in '{path}': {e}"), None)
-        })?;
+        let p = Matter::<YAML>::new()
+            .parse::<Value>(&content)
+            .map_err(|e| {
+                McpError::invalid_params(format!("Invalid frontmatter in '{path}': {e}"), None)
+            })?;
+        let matter = parse_matter(p.matter).map_err(|e| yaml_error(e, &path))?;
         Ok(Json(GetFrontmatterResult {
-            frontmatter: p.data,
+            frontmatter: matter,
         }))
     }
 
@@ -352,10 +364,11 @@ impl Server {
             .map_err(|e| {
                 McpError::invalid_params(format!("Invalid frontmatter in '{path}': {e}"), None)
             })?;
+        let matter = parse_matter(p.matter).map_err(|e| yaml_error(e, &path))?;
 
         let frontmatter = frontmatter.map(Value::Object);
         let new_frontmatter = if merge {
-            merge_front(p.data, frontmatter)
+            merge_front(matter, frontmatter)
         } else {
             frontmatter
         };
