@@ -1,4 +1,7 @@
-use std::{io::ErrorKind, path::PathBuf};
+use std::{
+    io::ErrorKind,
+    path::{Component, Path, PathBuf},
+};
 
 use gray_matter::{Matter, engine::YAML};
 use rmcp::{
@@ -10,6 +13,15 @@ use serde_json::Value;
 use tokio::fs;
 
 use crate::dto::{DeleteNoteParams, PatchNoteParams, ReadNoteParams, WriteMode, WriteNoteParams};
+
+fn resolve_path(vault_path: &Path, note_path: &str) -> Result<PathBuf, McpError> {
+    let path = vault_path.join(note_path);
+    if !path.components().all(|c| matches!(c, Component::Normal(_))) {
+        return Err(McpError::invalid_params("bad path provided", None));
+    }
+
+    Ok(path)
+}
 
 fn internal_error(e: impl ToString) -> McpError {
     McpError::internal_error(e.to_string(), None)
@@ -71,7 +83,8 @@ impl Server {
         &self,
         Parameters(ReadNoteParams { path }): Parameters<ReadNoteParams>,
     ) -> Result<String, McpError> {
-        fs::read_to_string(self.vault_path.join(&path))
+        let note_path = resolve_path(&self.vault_path, &path)?;
+        fs::read_to_string(note_path)
             .await
             .map_err(|e| io_error(e, &path))
     }
@@ -86,7 +99,7 @@ impl Server {
             mode,
         }): Parameters<WriteNoteParams>,
     ) -> Result<String, McpError> {
-        let note_path = self.vault_path.join(&path);
+        let note_path = resolve_path(&self.vault_path, &path)?;
         let final_content = match mode {
             WriteMode::Overwrite => render_note(frontmatter, &content)?,
             WriteMode::Append | WriteMode::Prepend => {
@@ -129,7 +142,7 @@ impl Server {
             replace_all,
         }): Parameters<PatchNoteParams>,
     ) -> Result<String, McpError> {
-        let note_path = self.vault_path.join(&path);
+        let note_path = resolve_path(&self.vault_path, &path)?;
         let note_content = fs::read_to_string(&note_path)
             .await
             .map_err(|e| io_error(e, &path))?;
@@ -169,7 +182,8 @@ impl Server {
         &self,
         Parameters(DeleteNoteParams { path }): Parameters<DeleteNoteParams>,
     ) -> Result<String, McpError> {
-        fs::remove_file(self.vault_path.join(&path))
+        let note_path = resolve_path(&self.vault_path, &path)?;
+        fs::remove_file(note_path)
             .await
             .map_err(|e| io_error(e, &path))?;
 
