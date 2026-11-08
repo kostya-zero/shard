@@ -17,6 +17,8 @@ use crate::dto::{
     WriteMode, WriteNoteParams,
 };
 
+static EXCLUDED_DIRS: [&str; 2] = [".obsidian", ".git"];
+
 fn resolve_path(vault_path: &Path, note_path: &str) -> Result<PathBuf, McpError> {
     let path = vault_path.join(note_path);
     let note_pathbuf = Path::new(note_path);
@@ -203,14 +205,11 @@ impl Server {
         let mut result = ListDirectoryResult::default();
         while let Some(entry) = entries.next_entry().await.map_err(internal_error)? {
             let metadata = entry.metadata().await.map_err(internal_error)?;
-            if metadata.is_file() {
-                result
-                    .files
-                    .push(entry.file_name().to_string_lossy().to_string());
+            let filename = entry.file_name().to_string_lossy().to_string();
+            if metadata.is_dir() && !EXCLUDED_DIRS.contains(&filename.as_str()) {
+                result.dirs.push(filename);
             } else {
-                result
-                    .dirs
-                    .push(entry.file_name().to_string_lossy().to_string());
+                result.files.push(filename);
             }
         }
 
