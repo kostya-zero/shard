@@ -41,3 +41,19 @@ pub struct WriteNoteParams {
     /// Which write mode to use.
     pub mode: WriteMode,
 }
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct PatchNoteParams {
+    /// The path to note.
+    pub path: String,
+
+    /// The old content to replace.
+    pub old_content: String,
+
+    /// The new content.
+    pub new_content: String,
+
+    /// If there is more than one occurrence of old content,
+    /// replace_all should be set to true.
+    pub replace_all: bool,
+}

@@ -9,7 +9,7 @@ use rmcp::{
 use serde_json::{Value, json};
 use tokio::fs;
 
-use crate::dto::{ReadNoteParams, WriteMode, WriteNoteParams};
+use crate::dto::{PatchNoteParams, ReadNoteParams, WriteMode, WriteNoteParams};
 
 fn internal_error(e: impl ToString) -> McpError {
     McpError::internal_error("internal_error", Some(json!({"error": e.to_string()})))
@@ -118,6 +118,57 @@ impl Server {
             "Successfully wrote note: {} (mode: {})",
             path, mode
         ))
+    }
+
+    #[tool(
+        description = "Replace the exact string inside an existing note without rewriting full file."
+    )]
+    async fn patch_note(
+        &self,
+        Parameters(PatchNoteParams {
+            path,
+            old_content,
+            new_content,
+            replace_all,
+        }): Parameters<PatchNoteParams>,
+    ) -> Result<String, McpError> {
+        let note_path = self.vault_path.join(&path);
+        let note_content = fs::read_to_string(&note_path).await.map_err(|e| {
+            if e.kind() == ErrorKind::NotFound {
+                McpError::resource_not_found("resource_not_found", Some(json!({"path": path})))
+            } else {
+                internal_error(e)
+            }
+        })?;
+        let p = Matter::<YAML>::new()
+            .parse::<Value>(&note_content)
+            .map_err(internal_error)?;
+        let content = p.content;
+        let count = content.matches(&old_content).count();
+
+        if count == 0 {
+            return Err(McpError::invalid_params(
+                "No occurrences of the string found.",
+                None,
+            ));
+        }
+
+        if count > 1 && !replace_all {
+            return Err(McpError::invalid_params(
+                format!(
+                    "Found {} occurrences of the string. Use replace_all=true to replace all occurrences, or provide a more specific string to match exactly one occurrence.",
+                    count
+                ),
+                None,
+            ));
+        }
+
+        let final_content = render_note(p.data, &content.replace(&old_content, &new_content))?;
+        fs::write(note_path, final_content)
+            .await
+            .map_err(internal_error)?;
+
+        Ok(format!("Successfully replaced {count} occurrence(s)."))
     }
 }
 
