@@ -13,8 +13,9 @@ use serde_json::Value;
 use tokio::fs;
 
 use crate::dto::{
-    DeleteNoteParams, ListDirectoryParams, ListDirectoryResult, MoveFileParams, PatchNoteParams,
-    ReadNoteParams, WriteMode, WriteNoteParams,
+    DeleteNoteParams, GetFrontmatterParams, GetFrontmatterResult, ListDirectoryParams,
+    ListDirectoryResult, MoveFileParams, PatchNoteParams, ReadNoteParams, WriteMode,
+    WriteNoteParams,
 };
 
 static EXCLUDED_DIRS: [&str; 2] = [".obsidian", ".git"];
@@ -281,6 +282,30 @@ impl Server {
             .map_err(|e| io_error(e, &path))?;
 
         Ok(format!("Successfully deleted note: {path}"))
+    }
+
+    #[tool(description = "Extracts only frontmatter from a note without reading the full content.")]
+    async fn get_frontmatter(
+        &self,
+        Parameters(GetFrontmatterParams { path }): Parameters<GetFrontmatterParams>,
+    ) -> Result<Json<GetFrontmatterResult>, McpError> {
+        let note_path = resolve_path(&self.vault_path, &path)?;
+        if note_path.is_dir() {
+            return Err(McpError::invalid_params(
+                format!("'{path}' is a directory."),
+                None,
+            ));
+        }
+
+        let content = fs::read_to_string(&note_path)
+            .await
+            .map_err(|e| io_error(e, &path))?;
+        let p = Matter::<YAML>::new().parse(&content).map_err(|e| {
+            McpError::invalid_params(format!("Invalid frontmatter in '{path}': {e}"), None)
+        })?;
+        Ok(Json(GetFrontmatterResult {
+            frontmatter: p.data,
+        }))
     }
 }
 

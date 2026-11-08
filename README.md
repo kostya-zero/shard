@@ -24,7 +24,7 @@ TBW
 
 ### Metadata
 
-- [ ] `get_frontmatter`
+- [x] `get_frontmatter`
 - [ ] `update_frontmatter`
 - [ ] `get_notes_info`
 

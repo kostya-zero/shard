@@ -88,3 +88,15 @@ pub struct PatchNoteParams {
     /// replace_all should be set to true.
     pub replace_all: bool,
 }
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GetFrontmatterParams {
+    /// The path to note.
+    pub path: String,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct GetFrontmatterResult {
+    /// The frontmatter of the file.
+    pub frontmatter: Option<Value>,
+}
