@@ -68,6 +68,49 @@ On macOS and Linux use plain paths (`/path/to/shard`, `/path/to/vault`). Restart
 
 </details>
 
+<details>
+<summary><b>Codex</b></summary>
+
+Add Shard with the CLI:
+
+```
+codex mcp add shard -- /path/to/shard /path/to/vault
+```
+
+Or add it to `~/.codex/config.toml` manually:
+
+```toml
+[mcp_servers.shard]
+command = "/path/to/shard"
+args = ["/path/to/vault"]
+```
+
+On Windows, use single-quoted TOML strings for paths (`'C:\path\to\shard.exe'`) so backslashes aren't treated as escapes.
+
+</details>
+
+<details>
+<summary><b>OpenCode</b></summary>
+
+Add Shard to `opencode.json` in your project, or to `~/.config/opencode/opencode.json` to make it available everywhere:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "shard": {
+      "type": "local",
+      "command": ["/path/to/shard", "/path/to/vault"],
+      "enabled": true
+    }
+  }
+}
+```
+
+Note that OpenCode takes the executable and its arguments as a single `command` array.
+
+</details>
+
 ## Implemented tools
 
 ### File Operations
