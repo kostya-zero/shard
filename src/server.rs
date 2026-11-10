@@ -31,7 +31,7 @@ fn invalid_path(path: &str, reason: &str) -> McpError {
     McpError::invalid_params(format!("Invalid path '{path}': {reason}"), None)
 }
 
-fn resolve_path(vault_path: &Path, note_path: &str) -> Result<PathBuf, McpError> {
+async fn resolve_path(vault_path: &Path, note_path: &str) -> Result<PathBuf, McpError> {
     let rel = Path::new(note_path);
     if !rel
         .components()
@@ -45,7 +45,7 @@ fn resolve_path(vault_path: &Path, note_path: &str) -> Result<PathBuf, McpError>
 
     let full = vault_path.join(rel);
     let mut existing = full.as_path();
-    while existing.symlink_metadata().is_err() {
+    while fs::symlink_metadata(existing).await.is_err() {
         existing = existing
             .parent()
             .ok_or_else(|| invalid_path(note_path, "no existing parent directory."))?;
@@ -53,8 +53,8 @@ fn resolve_path(vault_path: &Path, note_path: &str) -> Result<PathBuf, McpError>
     let tail = full
         .strip_prefix(existing)
         .expect("existing is an ancestor of full");
-    let canon = existing
-        .canonicalize()
+    let canon = fs::canonicalize(existing)
+        .await
         .map_err(|_| invalid_path(note_path, "it cannot be resolved."))?
         .join(tail);
 
@@ -154,8 +154,8 @@ impl Server {
         &self,
         Parameters(ReadNoteParams { path }): Parameters<ReadNoteParams>,
     ) -> Result<String, McpError> {
-        let note_path = resolve_path(&self.vault_path, &path)?;
-        if note_path.is_dir() {
+        let note_path = resolve_path(&self.vault_path, &path).await?;
+        if fs::metadata(&note_path).await.is_ok_and(|m| m.is_dir()) {
             return Err(McpError::invalid_params(
                 format!("'{path}' is a directory. Use list_directory to see its contents."),
                 None,
@@ -179,7 +179,7 @@ impl Server {
             mode,
         }): Parameters<WriteNoteParams>,
     ) -> Result<String, McpError> {
-        let note_path = resolve_path(&self.vault_path, &path)?;
+        let note_path = resolve_path(&self.vault_path, &path).await?;
         let final_content = match mode {
             WriteMode::Overwrite => render_note(frontmatter, &content)?,
             WriteMode::Append | WriteMode::Prepend => {
@@ -246,7 +246,7 @@ impl Server {
                 None,
             ));
         }
-        let note_path = resolve_path(&self.vault_path, &path)?;
+        let note_path = resolve_path(&self.vault_path, &path).await?;
         let note_content = fs::read_to_string(&note_path)
             .await
             .map_err(|e| io_error(e, &path))?;
@@ -287,8 +287,8 @@ impl Server {
         &self,
         Parameters(ListDirectoryParams { path }): Parameters<ListDirectoryParams>,
     ) -> Result<Json<ListDirectoryResult>, McpError> {
-        let dir_path = resolve_path(&self.vault_path, &path)?;
-        if dir_path.is_file() {
+        let dir_path = resolve_path(&self.vault_path, &path).await?;
+        if fs::metadata(&dir_path).await.is_ok_and(|m| m.is_file()) {
             return Err(McpError::invalid_params(
                 format!("'{path}' is a file, not a directory."),
                 None,
@@ -326,8 +326,8 @@ impl Server {
             overwrite,
         }): Parameters<MoveFileParams>,
     ) -> Result<String, McpError> {
-        let old_path = resolve_path(&self.vault_path, &path)?;
-        let new_path = resolve_path(&self.vault_path, &new_file_path)?;
+        let old_path = resolve_path(&self.vault_path, &path).await?;
+        let new_path = resolve_path(&self.vault_path, &new_file_path).await?;
 
         fs::metadata(&old_path)
             .await
@@ -340,21 +340,25 @@ impl Server {
             ));
         }
 
-        if new_path.is_dir() {
-            return Err(McpError::invalid_params(
-                format!("Destination '{new_file_path}' is a directory."),
-                None,
-            ));
-        }
-
-        if new_path.exists() && !overwrite {
-            return Err(McpError::invalid_params(
-                format!(
-                    "File '{}' exists in the vault. Use overwrite=true to overwrite it.",
-                    new_file_path
-                ),
-                None,
-            ));
+        match fs::metadata(&new_path).await {
+            Ok(meta) if meta.is_dir() => {
+                return Err(McpError::invalid_params(
+                    format!("Destination '{new_file_path}' is a directory."),
+                    None,
+                ));
+            }
+            Ok(_) if !overwrite => {
+                return Err(McpError::invalid_params(
+                    format!(
+                        "File '{}' exists in the vault. Use overwrite=true to overwrite it.",
+                        new_file_path
+                    ),
+                    None,
+                ));
+            }
+            Ok(_) => {}
+            Err(e) if e.kind() == ErrorKind::NotFound => {}
+            Err(e) => return Err(io_error(e, &new_file_path)),
         }
 
         if let Some(parent) = new_path.parent() {
@@ -378,7 +382,7 @@ impl Server {
         &self,
         Parameters(DeleteNoteParams { path }): Parameters<DeleteNoteParams>,
     ) -> Result<String, McpError> {
-        let note_path = resolve_path(&self.vault_path, &path)?;
+        let note_path = resolve_path(&self.vault_path, &path).await?;
         fs::remove_file(note_path)
             .await
             .map_err(|e| io_error(e, &path))?;
@@ -393,8 +397,8 @@ impl Server {
         &self,
         Parameters(GetFrontmatterParams { path }): Parameters<GetFrontmatterParams>,
     ) -> Result<Json<GetFrontmatterResult>, McpError> {
-        let note_path = resolve_path(&self.vault_path, &path)?;
-        if note_path.is_dir() {
+        let note_path = resolve_path(&self.vault_path, &path).await?;
+        if fs::metadata(&note_path).await.is_ok_and(|m| m.is_dir()) {
             return Err(McpError::invalid_params(
                 format!("'{path}' is a directory."),
                 None,
@@ -422,8 +426,8 @@ impl Server {
             merge,
         }): Parameters<UpdateFrontmatterParams>,
     ) -> Result<String, McpError> {
-        let note_path = resolve_path(&self.vault_path, &path)?;
-        if note_path.is_dir() {
+        let note_path = resolve_path(&self.vault_path, &path).await?;
+        if fs::metadata(&note_path).await.is_ok_and(|m| m.is_dir()) {
             return Err(McpError::invalid_params(
                 format!("'{path}' is a directory."),
                 None,
