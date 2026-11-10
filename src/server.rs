@@ -3,7 +3,6 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-use gray_matter::{Matter, engine::YAML};
 use rmcp::{
     ErrorData as McpError, Json, ServerHandler,
     handler::server::{tool::ToolRouter, wrapper::Parameters},
@@ -18,7 +17,7 @@ use crate::{
         ListDirectoryResult, MoveFileParams, PatchNoteParams, ReadNoteParams,
         UpdateFrontmatterParams, WriteMode, WriteNoteParams,
     },
-    frontmatter::parse_matter,
+    frontmatter::{parse_matter, split_frontmatter},
 };
 
 /// Hidden entries (`.obsidian`, `.git`, `.trash`, dotfiles) and `node_modules` are off-limits.
@@ -178,15 +177,21 @@ impl Server {
                         io_error(e, &path)
                     }
                 })?;
-                let old = Matter::<YAML>::new()
-                    .parse::<Value>(&old_content)
-                    .map_err(|e| yaml_error(e, &path))?;
+                let (fm, old_body) = split_frontmatter(&old_content);
                 let body = match mode {
-                    WriteMode::Append => format!("{}\n{}", old.content.trim_end(), content),
-                    _ => format!("{}\n{}", content.trim_end(), old.content),
+                    WriteMode::Append => format!("{}\n{}", old_body.trim_end(), content),
+                    _ => format!("{}\n{}", content.trim_end(), old_body),
                 };
-                let matter = parse_matter(old.matter).map_err(|e| yaml_error(e, &path))?;
-                render_note(merge_front(matter, frontmatter), &body)?
+                // Without new properties the original frontmatter is kept byte for byte.
+                let head = match frontmatter {
+                    None => old_content[..old_content.len() - old_body.len()].to_string(),
+                    Some(new) => {
+                        let matter = parse_matter(fm.unwrap_or_default())
+                            .map_err(|e| yaml_error(e, &path))?;
+                        render_note(merge_front(matter, Some(new)), "")?
+                    }
+                };
+                format!("{head}{body}")
             }
         };
 
@@ -221,11 +226,7 @@ impl Server {
         let note_content = fs::read_to_string(&note_path)
             .await
             .map_err(|e| io_error(e, &path))?;
-        let p = Matter::<YAML>::new()
-            .parse::<Value>(&note_content)
-            .map_err(|e| yaml_error(e, &path))?;
-        let matter = parse_matter(p.matter).map_err(|e| yaml_error(e, &path))?;
-        let content = p.content;
+        let (_, content) = split_frontmatter(&note_content);
         let count = content.matches(&old_content).count();
 
         if count == 0 {
@@ -246,7 +247,8 @@ impl Server {
             ));
         }
 
-        let final_content = render_note(matter, &content.replace(&old_content, &new_content))?;
+        let head = &note_content[..note_content.len() - content.len()];
+        let final_content = format!("{head}{}", content.replace(&old_content, &new_content));
         fs::write(note_path, final_content)
             .await
             .map_err(|e| io_error(e, &path))?;
@@ -378,10 +380,8 @@ impl Server {
         let content = fs::read_to_string(&note_path)
             .await
             .map_err(|e| io_error(e, &path))?;
-        let p = Matter::<YAML>::new()
-            .parse::<Value>(&content)
-            .map_err(|e| yaml_error(e, &path))?;
-        let matter = parse_matter(p.matter).map_err(|e| yaml_error(e, &path))?;
+        let (fm, _) = split_frontmatter(&content);
+        let matter = parse_matter(fm.unwrap_or_default()).map_err(|e| yaml_error(e, &path))?;
         Ok(Json(GetFrontmatterResult {
             frontmatter: matter,
         }))
@@ -409,10 +409,8 @@ impl Server {
         let content = fs::read_to_string(&note_path)
             .await
             .map_err(|e| io_error(e, &path))?;
-        let p = Matter::<YAML>::new()
-            .parse::<Value>(&content)
-            .map_err(|e| yaml_error(e, &path))?;
-        let matter = parse_matter(p.matter).map_err(|e| yaml_error(e, &path))?;
+        let (fm, body) = split_frontmatter(&content);
+        let matter = parse_matter(fm.unwrap_or_default()).map_err(|e| yaml_error(e, &path))?;
 
         let frontmatter = frontmatter.map(Value::Object);
         let new_frontmatter = if merge {
@@ -421,12 +419,7 @@ impl Server {
             frontmatter
         };
 
-        // gray_matter trims the body, so restore the trailing newline of the original.
-        let mut body = p.content;
-        if content.ends_with('\n') && !body.ends_with('\n') {
-            body.push('\n');
-        }
-        let note = render_note(new_frontmatter, &body)?;
+        let note = render_note(new_frontmatter, body)?;
         fs::write(&note_path, note)
             .await
             .map_err(|e| io_error(e, &path))?;
