@@ -14,7 +14,59 @@ It doesn't use the Obsidian CLI. Instead, it works directly with the vault direc
 
 ## Installation
 
-TBW
+Download the binary for your platform from [GitHub Releases](https://github.com/kostya-zero/shard/releases) and put it somewhere permanent (for example, a directory in your `PATH`).
+
+Shard talks to the client over stdio and takes a single argument: the path to your vault.
+
+```
+shard <path-to-vault>
+```
+
+<details>
+<summary><b>Claude Code</b></summary>
+
+Add Shard with the CLI:
+
+```
+claude mcp add shard -- /path/to/shard /path/to/vault
+```
+
+Use `--scope user` to make it available in all projects, or `--scope project` to write it to `.mcp.json` in the current project.
+
+Or add it to `.mcp.json` manually:
+
+```json
+{
+  "mcpServers": {
+    "shard": {
+      "command": "/path/to/shard",
+      "args": ["/path/to/vault"]
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><b>Claude Desktop</b></summary>
+
+Open **Settings → Developer → Edit Config** and add Shard to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "shard": {
+      "command": "C:\\path\\to\\shard.exe",
+      "args": ["C:\\path\\to\\vault"]
+    }
+  }
+}
+```
+
+On macOS and Linux use plain paths (`/path/to/shard`, `/path/to/vault`). Restart Claude Desktop after saving.
+
+</details>
 
 ## Implemented tools
 
