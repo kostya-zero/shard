@@ -1,5 +1,6 @@
-use std::{fs, path::Path, process::exit};
+use std::fs;
 
+use anyhow::Context;
 use clap::Parser;
 use rmcp::ServiceExt;
 use tokio::io::{stdin, stdout};
@@ -15,13 +16,10 @@ mod server;
 async fn main() -> anyhow::Result<()> {
     let args = Cli::parse();
 
-    let vault_path = Path::new(&args.path).to_path_buf();
-    let Ok(vault_path_canon) = fs::canonicalize(&args.path) else {
-        eprintln!("failed to canonicalize the path to vault");
-        exit(1);
-    };
+    let vault_path = fs::canonicalize(&args.path)
+        .with_context(|| format!("vault path '{}' is not accessible", args.path))?;
     let transport = (stdin(), stdout());
-    let server = Server::new(vault_path_canon).serve(transport).await?;
+    let server = Server::new(vault_path).serve(transport).await?;
     server.waiting().await?;
 
     Ok(())

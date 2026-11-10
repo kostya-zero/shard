@@ -1,7 +1,6 @@
 use std::{
     io::ErrorKind,
     path::{Component, Path, PathBuf},
-    process::exit,
 };
 
 use rmcp::{
@@ -29,55 +28,50 @@ fn is_restricted(name: &str) -> bool {
     name.is_empty() || name.starts_with('.') || name.eq_ignore_ascii_case("node_modules")
 }
 
+fn invalid_path(path: &str, reason: &str) -> McpError {
+    McpError::invalid_params(format!("Invalid path '{path}': {reason}"), None)
+}
+
 fn resolve_path(vault_path: &Path, note_path: &str) -> Result<PathBuf, McpError> {
     let rel = Path::new(note_path);
     if !rel
         .components()
-        .all(|c| matches!(c, Component::Normal(n) if !n.to_string_lossy().contains(":") ))
+        .all(|c| matches!(c, Component::Normal(n) if !n.to_string_lossy().contains(':')))
     {
-        return Err(McpError::invalid_params(
-            format!(
-            "Invalid path '{note_path}': it must be relative to the vault root and must not be absolute or contain '..' or '.'."
-        ),
-            None,
+        return Err(invalid_path(
+            note_path,
+            "it must be relative to the vault root and must not be absolute or contain '..', '.' or ':'.",
         ));
     }
 
     let full = vault_path.join(rel);
     let mut existing = full.as_path();
-    if !existing.exists() {
+    while existing.symlink_metadata().is_err() {
         existing = existing
             .parent()
-            .ok_or_else(|| McpError::invalid_params(format!("Invalid path: {note_path}."), None))?;
+            .ok_or_else(|| invalid_path(note_path, "no existing parent directory."))?;
     }
-    let tail = full.strip_prefix(existing).expect("existing is an ancestor of full");
-    let canon = existing.canonicalize().map_err(|_| 
-        McpError::invalid_params(
-            format!(
-            "Invalid path '{note_path}': it must be relative to the vault root and must not be absolute or contain '..' or '.'."
-        ),
-            None,
-        )
-    )?.join(tail);
+    let tail = full
+        .strip_prefix(existing)
+        .expect("existing is an ancestor of full");
+    let canon = existing
+        .canonicalize()
+        .map_err(|_| invalid_path(note_path, "it cannot be resolved."))?
+        .join(tail);
 
-    let inside = canon.strip_prefix(vault_path).map_err(|_| 
-        McpError::invalid_params(
-            format!(
-            "Invalid path '{note_path}': it must be relative to the vault root and must not be absolute or contain '..' or '.'."
-        ),
-            None,
-        )
-
-    )?;
-    if inside.components().any(|c| is_restricted(&c.as_os_str().to_string_lossy())) {
-        return Err(McpError::invalid_params(
-            format!(
-            "Invalid path '{note_path}': hidden entries (starting with '.') and node_modules are not accessible."
-        ),
-            None,
+    let inside = canon
+        .strip_prefix(vault_path)
+        .map_err(|_| invalid_path(note_path, "it points outside the vault."))?;
+    if inside
+        .components()
+        .any(|c| is_restricted(&c.as_os_str().to_string_lossy()))
+    {
+        return Err(invalid_path(
+            note_path,
+            "hidden entries (starting with '.') and node_modules are not accessible.",
         ));
     }
-    Ok(canon)   
+    Ok(canon)
 }
 
 fn internal_error(e: impl ToString) -> McpError {
