@@ -483,7 +483,6 @@ Choosing a tool:
 - update_frontmatter: change properties without touching the body. Merges by default; a null value removes a key.
 - move_file renames or moves a note. Links in other notes are NOT updated. delete_note is permanent.
 
-Errors explain what went wrong and how to fix it; correct the call and retry.",
-    version = "0.1.0"
+Errors explain what went wrong and how to fix it; correct the call and retry."
 )]
 impl ServerHandler for Server {}
