@@ -153,8 +153,6 @@ impl Server {
         }
     }
 
-    // I think it's a temporary solution, because I want to implement
-    // separation from frontmatter and note content.
     #[tool(
         description = "Read a note and return its raw text: the YAML frontmatter block (if any) followed by the markdown body. To get only the properties, use get_frontmatter instead."
     )]
@@ -163,6 +161,13 @@ impl Server {
         Parameters(ReadNoteParams { path }): Parameters<ReadNoteParams>,
     ) -> Result<String, McpError> {
         let note_path = resolve_path(&self.vault_path, &path)?;
+        if note_path.is_dir() {
+            return Err(McpError::invalid_params(
+                format!("'{path}' is a directory. Use list_directory to see its contents."),
+                None,
+            ));
+        }
+
         fs::read_to_string(note_path)
             .await
             .map_err(|e| io_error(e, &path))
@@ -459,7 +464,26 @@ impl Server {
 
 #[tool_handler(
     name = "shard",
-    instructions = "An MCP server for Obsidian",
+    instructions = "Read and edit notes in a local Obsidian vault (a folder of Markdown files).
+
+Paths:
+- Every path is relative to the vault root, e.g. `projects/ideas.md`. No leading slash, no `.`, `..` or `:` components.
+- Notes are `.md` files: include the extension, otherwise Obsidian will not show the note.
+- Hidden entries (names starting with `.`, such as `.obsidian` or `.git`) and `node_modules` are not accessible.
+- Use list_directory (empty path = vault root) to discover what exists. It is not recursive.
+
+Note format:
+- A note may start with a YAML frontmatter block between two `---` lines (the note's properties); the rest is the Markdown body.
+- Frontmatter is a mapping of properties. Tool parameters and results show it as a JSON object.
+
+Choosing a tool:
+- read_note: the whole raw text, frontmatter included. get_frontmatter: only the properties, cheaper.
+- patch_note: replace an exact string in the body. Read the note first and copy the text exactly. Prefer it over rewriting a note.
+- write_note: create a note or replace it (mode=overwrite, replaces frontmatter too), or add text to its end/start (mode=append/prepend, the note must exist).
+- update_frontmatter: change properties without touching the body. Merges by default; a null value removes a key.
+- move_file renames or moves a note. Links in other notes are NOT updated. delete_note is permanent.
+
+Errors explain what went wrong and how to fix it; correct the call and retry.",
     version = "0.1.0"
 )]
 impl ServerHandler for Server {}
