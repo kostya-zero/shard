@@ -4,9 +4,8 @@ use std::{
 };
 
 use rmcp::{
-    ErrorData as McpError, Json, ServerHandler,
-    handler::server::{tool::ToolRouter, wrapper::Parameters},
-    tool, tool_handler, tool_router,
+    ErrorData as McpError, Json, ServerHandler, handler::server::wrapper::Parameters, tool,
+    tool_handler, tool_router,
 };
 use serde_json::{Map, Value};
 use tokio::fs;
@@ -139,18 +138,13 @@ fn merge_front(
 
 #[derive(Clone)]
 pub struct Server {
-    #[allow(dead_code)]
-    tool_router: ToolRouter<Self>,
     vault_path: PathBuf,
 }
 
 #[tool_router]
 impl Server {
     pub fn new(vault_path: PathBuf) -> Self {
-        Self {
-            vault_path,
-            tool_router: Self::tool_router(),
-        }
+        Self { vault_path }
     }
 
     #[tool(
