@@ -20,18 +20,17 @@ TBW
 
 ### File Operations
 
-- [x] `write_note`
-- [x] `read_note`
-- [x] `patch_note`
-- [x] `delete_note`
-- [x] `list_directory`
-- [x] `move_file`
+- [x] `write_note`: Create a note, fully replace it (`mode=overwrite`), or add text to its start/end (`mode=prepend`/`append`). Missing parent directories are created. Prepend/append require an existing note and merge `frontmatter` into its existing properties. To change a small part of a note, prefer `patch_note`; to change only properties, use `update_frontmatter`.
+- [x] `read_note`: Read a note and return its raw text: the YAML frontmatter block (if any) followed by the markdown body. To get only the properties, use `get_frontmatter` instead.
+- [x] `patch_note`: Replace an exact string in the body of an existing note without rewriting the whole file. Frontmatter is preserved and not searched. Fails if the string is not found, or is found several times while `replace_all` is false.
+- [x] `delete_note`: Permanently delete a note from the vault. This cannot be undone.
+- [x] `list_directory`: List the files and subdirectories directly inside a vault directory (non-recursive). Use an empty path for the vault root.
+- [x] `move_file`: Move or rename a file inside the vault. Missing parent directories of the destination are created. Fails if the destination exists unless `overwrite=true`. Does not update links in other notes.
 
 ### Metadata
 
-- [x] `get_frontmatter`
-- [x] `update_frontmatter`
-- [ ] `get_notes_info`
+- [x] `get_frontmatter`: Get only the frontmatter (properties) of a note as a JSON object, or null if it has none. Cheaper than `read_note` when the body is not needed.
+- [x] `update_frontmatter`: Change the frontmatter (properties) of a note without touching its body. By default merges into existing properties (null value deletes a key); with `merge=false` replaces all properties.
 
 ## License
 
