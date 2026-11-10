@@ -94,9 +94,9 @@ fn io_error(e: std::io::Error, path: &str) -> McpError {
     }
 }
 
-fn render_note(frontmatter: Option<Value>, body: &str) -> Result<String, McpError> {
+fn render_note(frontmatter: Option<Map<String, Value>>, body: &str) -> Result<String, McpError> {
     match frontmatter {
-        Some(f) if f != Value::Null && f != Value::Object(Map::new()) => {
+        Some(f) if !f.is_empty() => {
             let yaml = serde_yaml_ng::to_string(&f).map_err(internal_error)?;
             Ok(format!("---\n{yaml}---\n{body}"))
         }
@@ -123,11 +123,14 @@ fn merge_objects(old: &mut Map<String, Value>, new: Map<String, Value>) {
     }
 }
 
-fn merge_front(old: Option<Value>, new: Option<Value>) -> Option<Value> {
+fn merge_front(
+    old: Option<Map<String, Value>>,
+    new: Option<Map<String, Value>>,
+) -> Option<Map<String, Value>> {
     match (old, new) {
-        (Some(Value::Object(mut a)), Some(Value::Object(b))) => {
+        (Some(mut a), Some(b)) => {
             merge_objects(&mut a, b);
-            Some(Value::Object(a))
+            Some(a)
         }
         (_, Some(n)) => Some(n),
         (o, None) => o,
@@ -433,8 +436,6 @@ impl Server {
             .map_err(|e| io_error(e, &path))?;
         let (fm, body) = split_frontmatter(&content);
         let matter = parse_matter(fm.unwrap_or_default()).map_err(|e| yaml_error(e, &path))?;
-
-        let frontmatter = frontmatter.map(Value::Object);
         let new_frontmatter = if merge {
             merge_front(matter, frontmatter)
         } else {

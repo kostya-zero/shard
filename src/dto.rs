@@ -53,7 +53,7 @@ pub struct WriteNoteParams {
     /// nested objects merge recursively and a null value removes the key.
     /// Omit to leave existing frontmatter untouched (`append`/`prepend`)
     /// or to write no frontmatter (`overwrite`).
-    pub frontmatter: Option<Value>,
+    pub frontmatter: Option<Map<String, Value>>,
 
     /// How to write: `overwrite` replaces the whole note, `append` / `prepend`
     /// add `content` to the end / start of the existing body.
@@ -114,7 +114,7 @@ pub struct GetFrontmatterParams {
 #[derive(Debug, Default, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GetFrontmatterResult {
     /// Note properties as a JSON object, or null if the note has no frontmatter.
-    pub frontmatter: Option<Value>,
+    pub frontmatter: Option<Map<String, Value>>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]

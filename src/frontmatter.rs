@@ -1,11 +1,14 @@
-use anyhow::Result;
-use serde_json::Value;
+use anyhow::{Result, bail};
+use serde_json::{Map, Value};
 
-pub fn parse_matter(matter: &str) -> Result<Option<Value>> {
+pub fn parse_matter(matter: &str) -> Result<Option<Map<String, Value>>> {
     if matter.trim().is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(serde_yaml_ng::from_str(matter)?))
+        return Ok(None);
+    }
+    match serde_yaml_ng::from_str(matter)? {
+        Value::Object(map) => Ok(Some(map)),
+        Value::Null => Ok(None),
+        _ => bail!("frontmatter must be a mapping of properties"),
     }
 }
 
