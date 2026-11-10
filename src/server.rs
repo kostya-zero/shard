@@ -222,6 +222,12 @@ impl Server {
             replace_all,
         }): Parameters<PatchNoteParams>,
     ) -> Result<String, McpError> {
+        if old_content.is_empty() {
+            return Err(McpError::invalid_params(
+                "old_content must not be empty.".to_string(),
+                None,
+            ));
+        }
         let note_path = resolve_path(&self.vault_path, &path)?;
         let note_content = fs::read_to_string(&note_path)
             .await
