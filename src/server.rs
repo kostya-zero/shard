@@ -329,9 +329,16 @@ impl Server {
         let old_path = resolve_path(&self.vault_path, &path).await?;
         let new_path = resolve_path(&self.vault_path, &new_file_path).await?;
 
-        fs::metadata(&old_path)
+        let old_meta = fs::metadata(&old_path)
             .await
             .map_err(|e| io_error(e, &path))?;
+
+        if old_meta.is_dir() {
+            return Err(McpError::invalid_params(
+                format!("Source '{path}' is a directory."),
+                None,
+            ));
+        }
 
         if old_path == new_path {
             return Err(McpError::invalid_params(
