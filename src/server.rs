@@ -300,17 +300,23 @@ impl Server {
             .map_err(|e| io_error(e, &path))?;
         let mut result = ListDirectoryResult::default();
         while let Some(entry) = entries.next_entry().await.map_err(|e| io_error(e, &path))? {
-            let metadata = entry.metadata().await.map_err(|e| io_error(e, &path))?;
             let filename = entry.file_name().to_string_lossy().to_string();
             if is_restricted(&filename) {
                 continue;
             }
+            // Follows symlinks so links to directories land in `dirs`; a broken
+            // entry (dangling symlink, race with deletion) is skipped, not fatal.
+            let Ok(metadata) = fs::metadata(entry.path()).await else {
+                continue;
+            };
             if metadata.is_dir() {
                 result.dirs.push(filename);
             } else {
                 result.files.push(filename);
             }
         }
+        result.dirs.sort();
+        result.files.sort();
 
         Ok(Json(result))
     }
