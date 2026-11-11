@@ -27,6 +27,25 @@ fn is_restricted(name: &str) -> bool {
     name.is_empty() || name.starts_with('.') || name.eq_ignore_ascii_case("node_modules")
 }
 
+/// Writes via a sibling temp file + rename so readers (Obsidian, sync tools) never see a
+/// truncated note. The leading dot keeps the temp file hidden from `is_restricted` listings.
+async fn write_atomic(path: &Path, content: impl AsRef<[u8]>) -> std::io::Result<()> {
+    let (Some(dir), Some(name)) = (path.parent(), path.file_name()) else {
+        return Err(ErrorKind::InvalidInput.into());
+    };
+    let tmp = dir.join(format!(
+        ".{}.{}.tmp",
+        name.to_string_lossy(),
+        std::process::id()
+    ));
+    fs::write(&tmp, content).await?;
+    if let Err(e) = fs::rename(&tmp, path).await {
+        let _ = fs::remove_file(&tmp).await;
+        return Err(e);
+    }
+    Ok(())
+}
+
 fn invalid_path(path: &str, reason: &str) -> McpError {
     McpError::invalid_params(format!("Invalid path '{path}': {reason}"), None)
 }
@@ -218,7 +237,7 @@ impl Server {
                 .await
                 .map_err(|e| io_error(e, &path))?;
         }
-        fs::write(&note_path, final_content)
+        write_atomic(&note_path, final_content)
             .await
             .map_err(|e| io_error(e, &path))?;
 
@@ -273,7 +292,7 @@ impl Server {
 
         let head = &note_content[..note_content.len() - content.len()];
         let final_content = format!("{head}{}", content.replace(&old_content, &new_content));
-        fs::write(note_path, final_content)
+        write_atomic(&note_path, final_content)
             .await
             .map_err(|e| io_error(e, &path))?;
 
@@ -459,7 +478,7 @@ impl Server {
         };
 
         let note = render_note(new_frontmatter, body)?;
-        fs::write(&note_path, note)
+        write_atomic(&note_path, note)
             .await
             .map_err(|e| io_error(e, &path))?;
         if merge {
