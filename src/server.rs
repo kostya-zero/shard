@@ -9,6 +9,7 @@ use rmcp::{
 };
 use serde_json::{Map, Value};
 use tokio::fs;
+use tracing::info;
 
 use crate::{
     dto::{
@@ -241,6 +242,7 @@ impl Server {
             .await
             .map_err(|e| io_error(e, &path))?;
 
+        info!(note = %path, %mode, "note written");
         Ok(format!(
             "Successfully wrote note: {} (mode: {})",
             path, mode
@@ -296,6 +298,7 @@ impl Server {
             .await
             .map_err(|e| io_error(e, &path))?;
 
+        info!(note = %path, count, "note patched");
         Ok(format!("Successfully replaced {count} occurrence(s)."))
     }
 
@@ -403,6 +406,7 @@ impl Server {
             .await
             .map_err(|e| io_error(e, &path))?;
 
+        info!(from = %path, to = %new_file_path, "file moved");
         Ok(format!(
             "Successfully moved file '{}' to '{}'",
             path, new_file_path
@@ -419,6 +423,7 @@ impl Server {
             .await
             .map_err(|e| io_error(e, &path))?;
 
+        info!(note = %path, "note deleted");
         Ok(format!("Successfully deleted note: {path}"))
     }
 
@@ -481,6 +486,7 @@ impl Server {
         write_atomic(&note_path, note)
             .await
             .map_err(|e| io_error(e, &path))?;
+        info!(note = %path, merge, "frontmatter updated");
         if merge {
             Ok(format!("Successfully merged frontmatter in '{}'.", path))
         } else {
