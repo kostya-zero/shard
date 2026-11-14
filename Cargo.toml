@@ -5,7 +5,7 @@ authors = ["Konstantin Zhigaylo <kostyazero@proton.me>"]
 readme = "README.md"
 license = "MIT"
 repository = "https://github.com/kostya-zero/shard"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 
 [dependencies]
