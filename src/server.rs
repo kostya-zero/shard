@@ -73,10 +73,12 @@ async fn resolve_path(vault_path: &Path, note_path: &str) -> Result<PathBuf, Mcp
     let tail = full
         .strip_prefix(existing)
         .expect("existing is an ancestor of full");
-    let canon = fs::canonicalize(existing)
+    let mut canon = fs::canonicalize(existing)
         .await
-        .map_err(|_| invalid_path(note_path, "it cannot be resolved."))?
-        .join(tail);
+        .map_err(|_| invalid_path(note_path, "it cannot be resolved."))?;
+    if !tail.as_os_str().is_empty() {
+        canon.push(tail);
+    }
 
     let inside = canon
         .strip_prefix(vault_path)
